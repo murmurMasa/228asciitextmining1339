@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>テキストマイニング</title>
+<script src="rakutenma.js"></script>
+<script src="model_ja.js" defer></script>
+<script src="hanzenkaku.js"></script>
+<script>
+let canvas, context;            //グラフ用キャンバス
+let rma;                        //Rakuten MAオブジェクト
+let words = new Array();        //単語データ
+
+const init = () => {
+    //キャンバスの取得
+    canvas = document.getElementById("graph");  //キャンバスを取得
+    context = canvas.getContext("2d");
+    //読み込み完了
+    document.getElementById("message").innerText += "完了"; //メッセージに「完了」と表示
+    document.getElementById("analyze").disabled = false;    //「解析」ボタンを有効化
+    //解析モデルをセット
+    rma = new RakutenMA(model_ja);                          //RakutenMAオブジェクトを作成し、日本語用学習モデルを読み込む
+    rma.featset = RakutenMA.default_featset_ja;
+    rma.hash_func = RakutenMA.create_hash_func(15);
+}
+
+const analyzeText = () => {
+    //解析
+    const text = document.getElementById("input").value;    //入力テキストの値を取得
+    const tokens = rma.tokenize(                            //テキストを解析する
+       HanZenKaku.hs2fs(HanZenKaku.hw2fw(HanZenKaku.h2z(text)))
+    );
+    document.getElementById("output").innerHTML = "";       //解析結果をクリア
+    const n = document.getElementById("n").checked;         //名詞(n)、動詞(v)、副詞形容詞(a)チェックボックスの状態を取得
+    const v = document.getElementById("v").checked;
+    const a = document.getElementById("a").checked;
+    words = [];
+    for (const token of tokens) {
+        const span = document.createElement("span");        //span要素を作成
+        span.innerText = token[0];                          //単語をセット
+        if ((n) && (token[1].indexOf("N-") != -1)) {        //単語が名詞の時
+           //名詞
+           span.className = "markN";
+           setWord(token[0], "#3366CC");                    //棒グラフの色は青
+        } else if ((v) && (token[1].indexOf("V-") != -1)) { //単語が動詞のとき
+           //動詞
+           span.className = "markV";
+           setWord(token[0], "#CC3333");                    //棒グラフの色は赤
+        } else if ((a)
+           && ((token[1].indexOf("A-") != -1) || (token[1] == "F"))) {  //単語が副詞か形容詞のとき
+           //形容詞・副詞
+           span.className = "markA";
+           setWord(token[0], "#33CC33");                    //棒グラフの色は緑
+        }
+        document.getElementById("output").appendChild(span);    //単語を表示する
+    }
+    //トップ１０をグラフで表示
+    words.sort((a, b) => {return b.num - a.num;});          //単語を出現回数順に並べ替え
+    let scale = 200/words[0].num;                           //棒グラフの長さを、１位の単語が200となるように調整
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.strokeStyle = "#000000";                        //ｘ軸ｙ軸の線の色は黒
+    context.beginPath();                                    //ｘ軸ｙ軸を描く
+    context.moveTo(40, 20);
+    context.lineTo(40, 250);
+    context.lineTo(580, 250);
+    context.stroke();
+    context.strokeStyle = "#999999";                        //最大値、半分値の横線の色はグレー
+    context.beginPath();                                    //最大値と半分値の横線を描く
+    context.moveTo(40, 50);
+    context.lineTo(580, 50);
+    context.moveTo(40, 150);
+    context.lineTo(580, 150);
+    context.stroke();
+    context.fillStyle = "#000000";                          //y軸項目の文字の色は黒
+    context.font = "12px sans-serif";
+    context.textAlign = "right";
+    context.textBaseline = "middle";
+    context.fillText(words[0].num, 35, 50);                 //最大値、半分値、ゼロを表示
+    context.fillText(words[0].num/2, 35, 150);
+    context.fillText(0, 35, 250);
+    context.textAlign = "center";
+    context.textBaseline = "top";
+    for (let i=0; i<words.length; i++) {
+        const h = words[i].num * scale;                 //単語の棒グラフの長さを計算
+        context.fillStyle = words[i].color;             //品詞ごとの棒グラフの色
+        context.fillRect(60+i*50, 250-h, 10, h);        //棒グラフを描く
+        context.fillStyle = "#000000";                  //x軸の項目(単語）の文字の色は黒
+        context.fillText(words[i].word, 65+i*50, 260);  //単語と出現回数を表示
+        context.fillText(`[${words[i].num}]`, 65+i*50, 280);
+        if (i == 9) break;                              //10個表示したならループを抜ける
+    }
+}
+
+const setWord = (word, color) => {
+    //単語データを作成
+    const index = words.findIndex(e => (e.word == word) && (e.color == color)); //すでに単語と色の組み合わせがあるかを検出
+    if (index == -1) {                                  //無いなら新たな単語として追加
+       words.push({"word":word, "num":1, "color":color});
+    } else {                                            //あるなら出現回数を１増やす
+       words[index].num++;
+    }
+}
+
+const clearText = () => {
+    //クリア
+    document.getElementById("input").value = "";
+    document.getElementById("output").innerHTML = "";
+    context.clearRect(0, 0, canvas.width, canvas.height);
+}
+</script>
+<style>
+#message{
+    font-size: small;
+    color: #006600;
+}
+canvas {border: thin solid #CCCCCC;}
+textarea, div {
+    font: 12px sans-serif;
+    width: 600px;
+    height: 100px;
+    padding: 2px;
+}
+#output {
+    overflow: auto;
+    border: thin solid #CCCCCC;
+}
+#output span {border:thin solid #CCCCCC;}
+.markN {background-color: #99CCFF;}
+.markV {background-color: #FF9999;}
+.markA {background-color: #99FF99;}
+</style>
+</head>
+<body onload="init()">
+<p>テキストマイニング</p>
+<span id="message">モデルの読み込み・・・</span>
+<hr>
+<textarea id="input" placeholder="テキストを入力してください。"></textarea>
+<br>
+<input type="checkbox" id="n" checked><label class="markN" for="n">名詞</label>
+<input type="checkbox" id="v" ><label class="markV" for="v">動詞</label>
+<input type="checkbox" id="a" ><label class="markA" for="a">形容詞・副詞</label>
+<input type="button" id="analyze" value="解析" disabled onclick="analyzeText()">
+<input type="button" value="クリア" onclick="clearText()">
+<hr>
+<canvas id="graph" width="600" height="300"></canvas>
+<div id="output"></div>
+</body>
+</html>
